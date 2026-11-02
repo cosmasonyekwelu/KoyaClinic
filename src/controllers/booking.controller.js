@@ -28,7 +28,22 @@ async function getBookingById(req, res, next) {
   }
 }
 
+/**
+ * DELETE /bookings/:id
+ * Cancel a booking by its ID.
+ */
+async function cancelBooking(req, res, next) {
+  try {
+    const { id } = req.params;
+    const booking = await bookingService.cancelBooking(id);
+    res.status(200).json(booking);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   createBooking,
   getBookingById,
+  cancelBooking,
 };

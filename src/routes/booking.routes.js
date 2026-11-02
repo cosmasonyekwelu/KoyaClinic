@@ -6,5 +6,6 @@ const router = express.Router();
 
 router.post('/', validateBookingInput, bookingController.createBooking);
 router.get('/:id', bookingController.getBookingById);
+router.delete('/:id', bookingController.cancelBooking);
 
 module.exports = router;
