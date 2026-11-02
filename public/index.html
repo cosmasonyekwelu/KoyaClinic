@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koya Clinic - Appointment Booking</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Koya Clinic</h1>
+      <p class="tagline">Online Appointment Booking System</p>
+      <div id="api-status" class="status-badge">Checking API health...</div>
+    </header>
+
+    <main class="main-content">
+      <section class="card">
+        <h2>Available Appointments</h2>
+        <p class="description">Select a healthcare provider and book an available slot.</p>
+        
+        <div class="filters">
+          <label for="provider-select">Provider:</label>
+          <select id="provider-select">
+            <option value="">All Providers</option>
+          </select>
+          <button id="refresh-slots" class="btn btn-secondary">Refresh</button>
+        </div>
+
+        <div id="slots-container" class="slots-grid">
+          <p class="placeholder-text">Slots will be displayed here once Level 1 is activated.</p>
+        </div>
+      </section>
+
+      <section class="card booking-form-section">
+        <h2>Book a Slot</h2>
+        <form id="booking-form">
+          <div class="form-group">
+            <label for="selected-slot">Selected Slot ID</label>
+            <input type="text" id="selected-slot" name="slot_id" readonly placeholder="Select a slot from above">
+          </div>
+          <div class="form-group">
+            <label for="patient-name">Full Name</label>
+            <input type="text" id="patient-name" name="name" required placeholder="e.g. Ada Obi">
+          </div>
+          <div class="form-group">
+            <label for="patient-email">Email Address</label>
+            <input type="email" id="patient-email" name="email" required placeholder="e.g. ada@example.com">
+          </div>
+          <button type="submit" id="submit-booking" class="btn btn-primary">Confirm Booking</button>
+        </form>
+        <div id="booking-result" class="result-message"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>&copy; 2026 Koya Clinic. Task 1 Assessment API.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

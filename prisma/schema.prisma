@@ -1,0 +1,41 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum BookingStatus {
+  confirmed
+  cancelled
+}
+
+model Slot {
+  id        String    @id
+  provider  String
+  start     DateTime
+  end       DateTime
+  bookings  Booking[]
+
+  @@index([start])
+  @@index([provider])
+  @@map("slots")
+}
+
+model Booking {
+  id         String        @id @default(uuid())
+  slot_id    String        @map("slot_id")
+  name       String
+  email      String
+  status     BookingStatus @default(confirmed)
+  created_at DateTime      @default(now()) @map("created_at")
+
+  slot       Slot          @relation(fields: [slot_id], references: [id], onDelete: Cascade)
+
+  @@index([slot_id])
+  @@index([email])
+  @@index([created_at])
+  @@map("bookings")
+}
