@@ -45,23 +45,28 @@ KoyaClinic/
 │   │   ├── index.js
 │   │   ├── reset.routes.js
 │   │   └── slot.routes.js
-│   ├── services/              # Business logic (Level 1, Level 2, Level 3)
+│   ├── services/              # Business logic (Level 1, Level 2, Level 3, Level 4)
 │   │   ├── booking.service.js
 │   │   └── slot.service.js
-│   ├── utils/                 # Shared helpers & validators
+│   ├── utils/                 # Shared helpers, idempotency & pagination utils
+│   │   ├── idempotency.util.js
+│   │   └── pagination.util.js
 │   ├── app.js                 # Express application setup
 │   ├── db.js                  # PrismaClient singleton instance
 │   └── index.js               # Server startup & shutdown handling
 ├── scripts/
-│   ├── concurrency-test.js    # Concurrency test suite (20 concurrent requests, rebooking, etc.)
-│   └── smoke.sh               # Automated smoke test suite (Level 1, 2 & 3)
+│   ├── concurrency-test.js    # Concurrency test suite (Level 3)
+│   ├── level4-concurrency-test.js # Concurrency test suite (Level 4 Idempotency)
+│   └── smoke.sh               # Automated smoke test suite (Levels 1, 2, 3 & 4)
 ├── tests/                     # Automated test suites
 │   ├── health.test.js
 │   ├── level1.test.js
 │   ├── level2.test.js
-│   └── level3.test.js
+│   ├── level3.test.js
+│   └── level4.test.js
 ├── LEVEL2_REPORT.md           # Level 2 Implementation & Test Report
 ├── LEVEL3_REPORT.md           # Level 3 Implementation & Test Report
+├── LEVEL4_REPORT.md           # Level 4 Implementation & Test Report
 ├── .env.example               # Template environment configuration
 ├── .gitignore                 # Files excluded from Git tracking
 ├── package.json
@@ -79,7 +84,7 @@ KoyaClinic/
 - `GET /bookings/:id`: Retrieves booking by ID or returns HTTP 404 if missing.
 
 ### Level 2: Authentication & Validation
-- **Authentication**: All assessment endpoints (`POST /reset`, `GET /slots`, `POST /bookings`, `GET /bookings/:id`, `DELETE /bookings/:id`) require the `X-API-Key` header matching `process.env.API_KEY`. Missing or invalid keys return HTTP 401 with `{"error":"unauthorized"}`.
+- **Authentication**: All assessment endpoints (`POST /reset`, `GET /slots`, `POST /bookings`, `GET /bookings`, `GET /bookings/:id`, `DELETE /bookings/:id`) require the `X-API-Key` header matching `process.env.API_KEY`. Missing or invalid keys return HTTP 401 with `{"error":"unauthorized"}`.
 - **Booking Input Validation**: `POST /bookings` validates `slot_id`, `name`, and `email`. All fields must be non-empty strings. Rejects missing fields, invalid data types, or empty strings with HTTP 400.
 - **Data Normalization**: Trims whitespace from `name` and `email`. Normalizes `email` to lowercase. Validates email format.
 - **Slot Validation**: Checks slot existence in database (returns HTTP 404 `{"error":"slot not found"}` if missing). Checks slot start time (returns HTTP 400 `{"error":"slot already started"}` if the slot has already started or is in the past).
@@ -96,9 +101,24 @@ KoyaClinic/
   - Returns full cancelled booking object with HTTP 200.
   - Frees slot for future bookings (shows `available: true` in `GET /slots`).
   - Cancelled bookings remain retrievable via `GET /bookings/:id`.
-- **Concurrency Testing (`scripts/concurrency-test.js`)**:
-  - Tests 20 concurrent requests against a single slot on real PostgreSQL. Exactly 1 receives HTTP 201, 19 receive HTTP 409 `{"error":"slot already booked"}`, with 0 duplicates.
-  - Tests cancellation and rebooking, double cancellations, nonexistent booking cancellations, concurrent cancellations, and simultaneous multi-slot bookings.
+
+### Level 4: Idempotency & Booking Pagination
+- **Idempotency (`POST /bookings` with `Idempotency-Key` header)**:
+  - Supports optional `Idempotency-Key` header.
+  - Persisted in PostgreSQL using `IdempotencyKey` model: `key` (id), `requestHash`, `statusCode`, `responseBody`, `createdAt`.
+  - Computes SHA-256 hash using stable JSON serialization of normalized request payload.
+  - Concurrency protected across multi-backend instances using PostgreSQL transaction advisory locks (`SELECT pg_advisory_xact_lock(hashtext(key))`).
+  - If key exists with different hash, returns HTTP 422 `{"error":"idempotency key reused with a different body"}`.
+  - If key exists with same hash, returns original status code and response body without creating duplicate bookings.
+  - Stores successful 201 responses and applicable 4xx responses (400, 404, 409); never stores 401 or 429.
+  - Requests without idempotency key follow normal booking flow.
+- **Booking Pagination (`GET /bookings`)**:
+  - Requires `email` query parameter, case-insensitive match (trimmed and lowercased). Returns HTTP 400 if missing or empty.
+  - Returns confirmed and cancelled bookings.
+  - Sorted oldest first: `created_at ASC, id ASC`.
+  - Keyset pagination with base64url encoded cursor (`created_at` and `id`). Returns `next_cursor: null` on the final page.
+  - Limit validation: integer between 1 and 50 (default 10). Rejects invalid limits (0, 51, negative, non-numeric) with HTTP 400 `{"error":"invalid limit"}`.
+  - Rejects invalid cursors with HTTP 400 `{"error":"invalid cursor"}`.
 
 ---
 
@@ -139,6 +159,7 @@ cp .env.example .env
 4. **Run Real PostgreSQL Concurrency Tests**:
    ```bash
    node scripts/concurrency-test.js
+   node scripts/level4-concurrency-test.js
    ```
 
 5. **Run Smoke Tests**:
@@ -153,7 +174,7 @@ cp .env.example .env
 
 ### 1. Neon Database Setup
 1. Log in to [Neon](https://neon.tech) and create a project/database.
-2. Apply migrations (including partial unique index `one_confirmed_booking_per_slot`).
+2. Synchronize schema using `npx prisma db push` or apply migrations.
 3. Obtain the connection string with `?sslmode=require`.
 
 ### 2. Render Web Service Setup

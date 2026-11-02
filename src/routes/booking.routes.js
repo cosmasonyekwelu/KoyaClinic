@@ -5,6 +5,7 @@ const { validateBookingInput } = require('../middleware/bookingValidation.middle
 const router = express.Router();
 
 router.post('/', validateBookingInput, bookingController.createBooking);
+router.get('/', bookingController.listBookings);
 router.get('/:id', bookingController.getBookingById);
 router.delete('/:id', bookingController.cancelBooking);
 

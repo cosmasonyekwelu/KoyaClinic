@@ -254,3 +254,76 @@ fi
 echo "PASSED (200)"
 
 echo "=== All Level 1, Level 2, and Level 3 Smoke Tests Passed Successfully ==="
+
+# 14. Level 4 Idempotency Check: Same Key and Same Body Twice
+echo -n "14. Testing Level 4 Idempotency-Key replay ... "
+IDEMP_KEY="smoke-idemp-$(date +%s)"
+IDEMP_PAYLOAD='{"slot_id":"smoke-s2","name":"Idempotent Patient","email":"idemp@example.com"}'
+
+IDEMP_RES_1=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/bookings" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Idempotency-Key: $IDEMP_KEY" \
+  -d "$IDEMP_PAYLOAD")
+
+STATUS_1=$(echo "$IDEMP_RES_1" | tail -n 1)
+BODY_1=$(echo "$IDEMP_RES_1" | head -n -1)
+BOOKING_ID_1=$(echo "$BODY_1" | grep -o '"id":"[^"]*' | cut -d'"' -f4)
+
+if [ "$STATUS_1" -ne 201 ] || [ -z "$BOOKING_ID_1" ]; then
+  fail "First request failed, Status: $STATUS_1, Body: $BODY_1"
+fi
+
+IDEMP_RES_2=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/bookings" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Idempotency-Key: $IDEMP_KEY" \
+  -d "$IDEMP_PAYLOAD")
+
+STATUS_2=$(echo "$IDEMP_RES_2" | tail -n 1)
+BODY_2=$(echo "$IDEMP_RES_2" | head -n -1)
+BOOKING_ID_2=$(echo "$BODY_2" | grep -o '"id":"[^"]*' | cut -d'"' -f4)
+
+if [ "$STATUS_2" -ne 201 ] || [ "$BOOKING_ID_1" != "$BOOKING_ID_2" ]; then
+  fail "Replay failed, Status: $STATUS_2, ID1: $BOOKING_ID_1, ID2: $BOOKING_ID_2"
+fi
+echo "PASSED (201, Replayed ID matched: $BOOKING_ID_1)"
+
+# 15. Level 4 Idempotency Check: Same Key with Different Body (422 check)
+echo -n "15. Testing Level 4 Idempotency-Key reused with different body (422 check) ... "
+IDEMP_MISMATCH_RES=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/bookings" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Idempotency-Key: $IDEMP_KEY" \
+  -d '{"slot_id":"smoke-s2","name":"Different Patient","email":"diff@example.com"}')
+
+MISMATCH_STATUS=$(echo "$IDEMP_MISMATCH_RES" | tail -n 1)
+MISMATCH_BODY=$(echo "$IDEMP_MISMATCH_RES" | head -n -1)
+
+if [ "$MISMATCH_STATUS" -ne 422 ] || ! echo "$MISMATCH_BODY" | grep -q "idempotency key reused with a different body"; then
+  fail "Status: $MISMATCH_STATUS, Body: $MISMATCH_BODY"
+fi
+echo "PASSED (422)"
+
+# 16. Level 4 Pagination Check: GET /bookings
+echo -n "16. Testing Level 4 GET /bookings pagination ... "
+PAGE_RES=$(curl -s -w "\n%{http_code}" -H "X-API-Key: $API_KEY" "$BASE_URL/bookings?email=idemp@example.com&limit=10")
+PAGE_STATUS=$(echo "$PAGE_RES" | tail -n 1)
+PAGE_BODY=$(echo "$PAGE_RES" | head -n -1)
+
+if [ "$PAGE_STATUS" -ne 200 ] || ! echo "$PAGE_BODY" | grep -q "$BOOKING_ID_1"; then
+  fail "Status: $PAGE_STATUS, Body: $PAGE_BODY"
+fi
+echo "PASSED (200, Bookings found)"
+
+# 17. Level 4 Pagination Check: Invalid limit (400 check)
+echo -n "17. Testing Level 4 GET /bookings with invalid limit (400 check) ... "
+BAD_LIMIT_RES=$(curl -s -w "\n%{http_code}" -H "X-API-Key: $API_KEY" "$BASE_URL/bookings?email=idemp@example.com&limit=0")
+BAD_LIMIT_STATUS=$(echo "$BAD_LIMIT_RES" | tail -n 1)
+
+if [ "$BAD_LIMIT_STATUS" -ne 400 ]; then
+  fail "Status: $BAD_LIMIT_STATUS"
+fi
+echo "PASSED (400)"
+
+echo "=== All Level 1, Level 2, Level 3, and Level 4 Smoke Tests Passed Successfully ==="
