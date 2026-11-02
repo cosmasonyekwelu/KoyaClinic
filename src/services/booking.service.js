@@ -3,12 +3,13 @@ const prisma = require('../db');
 
 /**
  * Creates a booking for a slot.
- * Level 1 Requirements:
- * - Check that the slot exists (throw 404 error if missing)
- * - Create a confirmed booking
- * - Generate a unique booking ID
- * - Save the booking in PostgreSQL
- * - Set created_at to current time
+ *
+ * Level 1 & 2 Requirements:
+ * - Check that the slot exists. If missing, return HTTP 404: {"error":"slot not found"}
+ * - If the slot has already started or is in the past, return HTTP 400: {"error":"slot already started"}
+ * - Create a confirmed booking with UUID id
+ * - Never create a booking when validation fails
+ *
  * @param {{ slot_id: string, name: string, email: string }} param0
  */
 async function createBooking({ slot_id, name, email }) {
@@ -22,8 +23,14 @@ async function createBooking({ slot_id, name, email }) {
     throw error;
   }
 
-  const bookingId = crypto.randomUUID();
   const now = new Date();
+  if (new Date(slot.start).getTime() <= now.getTime()) {
+    const error = new Error('slot already started');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const bookingId = crypto.randomUUID();
 
   const booking = await prisma.booking.create({
     data: {
