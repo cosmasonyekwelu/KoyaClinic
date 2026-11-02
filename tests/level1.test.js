@@ -2,7 +2,9 @@ const request = require('supertest');
 const app = require('../src/app');
 const prisma = require('../src/db');
 
-describe('Level 1 - Clinic Booking API', () => {
+const API_KEY = process.env.API_KEY || 'test-api-key';
+
+describe('Level 1 - Clinic Booking API (with Level 2 Auth)', () => {
   afterAll(async () => {
     await prisma.$disconnect();
   });
@@ -28,6 +30,7 @@ describe('Level 1 - Clinic Booking API', () => {
 
       const response = await request(app)
         .post('/reset')
+        .set('X-API-Key', API_KEY)
         .send(resetPayload);
 
       expect(response.status).toBe(200);
@@ -55,6 +58,7 @@ describe('Level 1 - Clinic Booking API', () => {
 
       const response = await request(app)
         .post('/reset')
+        .set('X-API-Key', API_KEY)
         .send(pastSlotPayload);
 
       expect(response.status).toBe(200);
@@ -68,6 +72,7 @@ describe('Level 1 - Clinic Booking API', () => {
       // First ensure baseline with 1 slot
       await request(app)
         .post('/reset')
+        .set('X-API-Key', API_KEY)
         .send({
           slots: [
             {
@@ -99,6 +104,7 @@ describe('Level 1 - Clinic Booking API', () => {
 
       const response = await request(app)
         .post('/reset')
+        .set('X-API-Key', API_KEY)
         .send(invalidPayload);
 
       expect(response.status).toBe(500);
@@ -115,6 +121,7 @@ describe('Level 1 - Clinic Booking API', () => {
     beforeEach(async () => {
       await request(app)
         .post('/reset')
+        .set('X-API-Key', API_KEY)
         .send({
           slots: [
             {
@@ -140,7 +147,9 @@ describe('Level 1 - Clinic Booking API', () => {
     });
 
     it('should sort slots by start time ascending and return ISO-8601 UTC dates', async () => {
-      const response = await request(app).get('/slots');
+      const response = await request(app)
+        .get('/slots')
+        .set('X-API-Key', API_KEY);
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('slots');
@@ -161,17 +170,23 @@ describe('Level 1 - Clinic Booking API', () => {
 
     it('should support provider filtering with exact matching', async () => {
       // Filter for exact "Dr Ade"
-      const resAde = await request(app).get('/slots?provider=Dr%20Ade');
+      const resAde = await request(app)
+        .get('/slots?provider=Dr%20Ade')
+        .set('X-API-Key', API_KEY);
       expect(resAde.status).toBe(200);
       expect(resAde.body.slots).toHaveLength(2);
       expect(resAde.body.slots.every((s) => s.provider === 'Dr Ade')).toBe(true);
 
       // Exact matching: partial match or lower case should return empty
-      const resPartial = await request(app).get('/slots?provider=Ade');
+      const resPartial = await request(app)
+        .get('/slots?provider=Ade')
+        .set('X-API-Key', API_KEY);
       expect(resPartial.status).toBe(200);
       expect(resPartial.body.slots).toHaveLength(0);
 
-      const resCase = await request(app).get('/slots?provider=dr%20ade');
+      const resCase = await request(app)
+        .get('/slots?provider=dr%20ade')
+        .set('X-API-Key', API_KEY);
       expect(resCase.status).toBe(200);
       expect(resCase.body.slots).toHaveLength(0);
     });
@@ -180,13 +195,16 @@ describe('Level 1 - Clinic Booking API', () => {
       // Book slot s1
       await request(app)
         .post('/bookings')
+        .set('X-API-Key', API_KEY)
         .send({
           slot_id: 's1',
           name: 'Ada Obi',
           email: 'ada@example.com',
         });
 
-      const response = await request(app).get('/slots');
+      const response = await request(app)
+        .get('/slots')
+        .set('X-API-Key', API_KEY);
       expect(response.status).toBe(200);
 
       const s1 = response.body.slots.find((s) => s.id === 's1');
@@ -201,6 +219,7 @@ describe('Level 1 - Clinic Booking API', () => {
     beforeEach(async () => {
       await request(app)
         .post('/reset')
+        .set('X-API-Key', API_KEY)
         .send({
           slots: [
             {
@@ -216,6 +235,7 @@ describe('Level 1 - Clinic Booking API', () => {
     it('should successfully create a confirmed booking and return HTTP 201', async () => {
       const response = await request(app)
         .post('/bookings')
+        .set('X-API-Key', API_KEY)
         .send({
           slot_id: 's1',
           name: 'Ada Obi',
@@ -245,6 +265,7 @@ describe('Level 1 - Clinic Booking API', () => {
     it('should return HTTP 404 with {"error": "slot not found"} for an unknown slot', async () => {
       const response = await request(app)
         .post('/bookings')
+        .set('X-API-Key', API_KEY)
         .send({
           slot_id: 'unknown-slot-999',
           name: 'Ada Obi',
@@ -262,6 +283,7 @@ describe('Level 1 - Clinic Booking API', () => {
     beforeEach(async () => {
       await request(app)
         .post('/reset')
+        .set('X-API-Key', API_KEY)
         .send({
           slots: [
             {
@@ -275,6 +297,7 @@ describe('Level 1 - Clinic Booking API', () => {
 
       const res = await request(app)
         .post('/bookings')
+        .set('X-API-Key', API_KEY)
         .send({
           slot_id: 's1',
           name: 'Ada Obi',
@@ -284,7 +307,9 @@ describe('Level 1 - Clinic Booking API', () => {
     });
 
     it('should retrieve a booking by its ID and return HTTP 200 with identical structure', async () => {
-      const response = await request(app).get(`/bookings/${createdBooking.id}`);
+      const response = await request(app)
+        .get(`/bookings/${createdBooking.id}`)
+        .set('X-API-Key', API_KEY);
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(createdBooking);
@@ -297,7 +322,9 @@ describe('Level 1 - Clinic Booking API', () => {
         data: { status: 'cancelled' },
       });
 
-      const response = await request(app).get(`/bookings/${createdBooking.id}`);
+      const response = await request(app)
+        .get(`/bookings/${createdBooking.id}`)
+        .set('X-API-Key', API_KEY);
 
       expect(response.status).toBe(200);
       expect(response.body.id).toBe(createdBooking.id);
@@ -305,7 +332,9 @@ describe('Level 1 - Clinic Booking API', () => {
     });
 
     it('should return HTTP 404 with {"error": "booking not found"} for missing booking', async () => {
-      const response = await request(app).get('/bookings/non-existent-booking-id');
+      const response = await request(app)
+        .get('/bookings/non-existent-booking-id')
+        .set('X-API-Key', API_KEY);
 
       expect(response.status).toBe(404);
       expect(response.body).toEqual({ error: 'booking not found' });

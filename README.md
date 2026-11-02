@@ -31,25 +31,56 @@ KoyaClinic/
 │   └── app.js                 # Frontend interactions & health check
 ├── src/
 │   ├── controllers/           # HTTP request handlers
-│   │   └── health.controller.js
-│   ├── middleware/            # Error handling, 404, auth
+│   │   ├── booking.controller.js
+│   │   ├── health.controller.js
+│   │   └── slot.controller.js
+│   ├── middleware/            # Error handling, 404, auth, validation
+│   │   ├── auth.middleware.js
+│   │   ├── bookingValidation.middleware.js
 │   │   ├── error.middleware.js
 │   │   └── notFound.middleware.js
 │   ├── routes/                # Express routing definitions
+│   │   ├── booking.routes.js
 │   │   ├── health.routes.js
-│   │   └── index.js
-│   ├── services/              # Business logic (Level 1+)
+│   │   ├── index.js
+│   │   ├── reset.routes.js
+│   │   └── slot.routes.js
+│   ├── services/              # Business logic (Level 1 & Level 2)
+│   │   ├── booking.service.js
+│   │   └── slot.service.js
 │   ├── utils/                 # Shared helpers & validators
 │   ├── app.js                 # Express application setup
 │   ├── db.js                  # PrismaClient singleton instance
 │   └── index.js               # Server startup & shutdown handling
+├── scripts/
+│   └── smoke.sh               # Automated smoke test suite (Level 1 & Level 2)
 ├── tests/                     # Automated test suites
-│   └── health.test.js
+│   ├── health.test.js
+│   ├── level1.test.js
+│   └── level2.test.js
+├── LEVEL2_REPORT.md           # Level 2 Implementation & Test Report
 ├── .env.example               # Template environment configuration
 ├── .gitignore                 # Files excluded from Git tracking
 ├── package.json
 └── README.md
 ```
+
+---
+
+## Features Implemented
+
+### Level 1: Core Endpoints
+- `POST /reset`: Atomically clears previous bookings and replaces all slots with the provided array.
+- `GET /slots`: Lists all slots ordered by start time ascending. Supports exact-match filtering via `?provider=...`. Returns `available: false` when booked.
+- `POST /bookings`: Books a slot and returns HTTP 201 with confirmed status.
+- `GET /bookings/:id`: Retrieves booking by ID or returns HTTP 404 if missing.
+
+### Level 2: Authentication & Validation
+- **Authentication**: All assessment endpoints (`POST /reset`, `GET /slots`, `POST /bookings`, `GET /bookings/:id`) require the `X-API-Key` header matching `process.env.API_KEY`. Missing or invalid keys return HTTP 401 with `{"error":"unauthorized"}`.
+- **Booking Input Validation**: `POST /bookings` validates `slot_id`, `name`, and `email`. All fields must be non-empty strings. Rejects missing fields, invalid data types, or empty strings with HTTP 400.
+- **Data Normalization**: Trims whitespace from `name` and `email`. Normalizes `email` to lowercase. Validates email format.
+- **Slot Validation**: Checks slot existence in database (returns HTTP 404 `{"error":"slot not found"}` if missing). Checks slot start time (returns HTTP 400 `{"error":"slot already started"}` if the slot has already started or is in the past).
+- **Safety**: No records are created when any validation check fails. No database internals or stack traces are leaked to clients.
 
 ---
 
@@ -70,7 +101,7 @@ cp .env.example .env
 
 ---
 
-## Local Development Setup
+## Local Development & Testing
 
 1. **Install Dependencies**:
    ```bash
@@ -82,30 +113,24 @@ cp .env.example .env
    npm run prisma:generate
    ```
 
-3. **Run Database Migrations** (requires valid `DATABASE_URL`):
-   ```bash
-   npm run prisma:migrate
-   ```
-
-4. **Run Automated Tests**:
+3. **Run Automated Jest Tests**:
    ```bash
    npm test
    ```
 
-5. **Start Development Server**:
+4. **Run Smoke Tests**:
    ```bash
-   npm run dev
+   npm start &
+   bash scripts/smoke.sh
    ```
-   Open `http://localhost:3000` to view the frontend or test `http://localhost:3000/health`.
 
 ---
 
 ## Deployment Guide
 
 ### 1. Neon Database Setup
-1. Log in to [Neon](https://neon.tech) and create a new project.
-2. Under **Connection Details**, copy the pooled connection string.
-3. Keep SSL mode enabled (`?sslmode=require`).
+1. Log in to [Neon](https://neon.tech) and create a project/database.
+2. Obtain the connection string with `?sslmode=require`.
 
 ### 2. Render Web Service Setup
 1. Create a new **Web Service** on [Render](https://render.com) linked to your GitHub repository.
