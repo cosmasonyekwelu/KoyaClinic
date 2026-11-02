@@ -9,7 +9,7 @@ fail() {
   return 1 2>/dev/null || (kill -s TERM $$ 2>/dev/null || true)
 }
 
-echo "=== Running Level 1 & Level 2 Smoke Tests against $BASE_URL ==="
+echo "=== Running Level 1, Level 2, and Level 3 Smoke Tests against $BASE_URL ==="
 
 # 0a. Authentication Check: Missing API Key
 echo -n "0a. Testing request with missing API key (401 check) ... "
@@ -146,16 +146,34 @@ fi
 BOOKING_ID=$(echo "$BOOKING_BODY" | grep -o '"id":"[^"]*' | cut -d'"' -f4)
 echo "PASSED (201, ID: $BOOKING_ID, normalized email)"
 
-# 5. Check slot availability became false
-echo -n "5. Verifying slot availability after booking ... "
+# 5. Prevent Double Booking (Level 3 Check)
+echo -n "5. Testing double booking prevention (409 check) ... "
+DOUBLE_BOOK_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/bookings" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "slot_id": "smoke-s1",
+    "name": "Another Patient",
+    "email": "another@example.com"
+  }')
+DOUBLE_BOOK_STATUS=$(echo "$DOUBLE_BOOK_RESPONSE" | tail -n 1)
+DOUBLE_BOOK_BODY=$(echo "$DOUBLE_BOOK_RESPONSE" | head -n -1)
+
+if [ "$DOUBLE_BOOK_STATUS" -ne 409 ] || ! echo "$DOUBLE_BOOK_BODY" | grep -q "slot already booked"; then
+  fail "Status: $DOUBLE_BOOK_STATUS, Body: $DOUBLE_BOOK_BODY"
+fi
+echo "PASSED (409)"
+
+# 6. Check slot availability became false
+echo -n "6. Verifying slot availability after booking ... "
 SLOTS_AFTER_RESPONSE=$(curl -s -H "X-API-Key: $API_KEY" "$BASE_URL/slots")
 if ! echo "$SLOTS_AFTER_RESPONSE" | grep -q '"available":false'; then
   fail "Slot smoke-s1 not marked unavailable ($SLOTS_AFTER_RESPONSE)"
 fi
 echo "PASSED"
 
-# 6. Get booking by ID
-echo -n "6. Testing GET /bookings/:id ... "
+# 7. Get booking by ID
+echo -n "7. Testing GET /bookings/:id ... "
 GET_BOOKING_RESPONSE=$(curl -s -w "\n%{http_code}" -H "X-API-Key: $API_KEY" "$BASE_URL/bookings/$BOOKING_ID")
 GET_BOOKING_STATUS=$(echo "$GET_BOOKING_RESPONSE" | tail -n 1)
 GET_BOOKING_BODY=$(echo "$GET_BOOKING_RESPONSE" | head -n -1)
@@ -165,33 +183,74 @@ if [ "$GET_BOOKING_STATUS" -ne 200 ] || ! echo "$GET_BOOKING_BODY" | grep -q "$B
 fi
 echo "PASSED (200)"
 
-# 7. Get non-existent booking
-echo -n "7. Testing GET /bookings/nonexistent (404 check) ... "
-NOT_FOUND_RESPONSE=$(curl -s -w "\n%{http_code}" -H "X-API-Key: $API_KEY" "$BASE_URL/bookings/nonexistent-id")
-NOT_FOUND_STATUS=$(echo "$NOT_FOUND_RESPONSE" | tail -n 1)
-NOT_FOUND_BODY=$(echo "$NOT_FOUND_RESPONSE" | head -n -1)
+# 8. Cancel Booking (Level 3 DELETE /bookings/:id)
+echo -n "8. Testing DELETE /bookings/:id ... "
+CANCEL_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE -H "X-API-Key: $API_KEY" "$BASE_URL/bookings/$BOOKING_ID")
+CANCEL_STATUS=$(echo "$CANCEL_RESPONSE" | tail -n 1)
+CANCEL_BODY=$(echo "$CANCEL_RESPONSE" | head -n -1)
 
-if [ "$NOT_FOUND_STATUS" -ne 404 ] || ! echo "$NOT_FOUND_BODY" | grep -q "booking not found"; then
-  fail "Status: $NOT_FOUND_STATUS, Body: $NOT_FOUND_BODY"
+if [ "$CANCEL_STATUS" -ne 200 ] || ! echo "$CANCEL_BODY" | grep -q '"status":"cancelled"'; then
+  fail "Status: $CANCEL_STATUS, Body: $CANCEL_BODY"
 fi
-echo "PASSED (404)"
+echo "PASSED (200, status: cancelled)"
 
-# 8. Book unknown slot
-echo -n "8. Testing POST /bookings with unknown slot (404 check) ... "
-UNKNOWN_SLOT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/bookings" \
+# 9. Cancel already cancelled booking (409 check)
+echo -n "9. Testing double cancellation (409 check) ... "
+CANCEL_AGAIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE -H "X-API-Key: $API_KEY" "$BASE_URL/bookings/$BOOKING_ID")
+CANCEL_AGAIN_STATUS=$(echo "$CANCEL_AGAIN_RESPONSE" | tail -n 1)
+CANCEL_AGAIN_BODY=$(echo "$CANCEL_AGAIN_RESPONSE" | head -n -1)
+
+if [ "$CANCEL_AGAIN_STATUS" -ne 409 ] || ! echo "$CANCEL_AGAIN_BODY" | grep -q "booking already cancelled"; then
+  fail "Status: $CANCEL_AGAIN_STATUS, Body: $CANCEL_AGAIN_BODY"
+fi
+echo "PASSED (409)"
+
+# 10. Re-check slot availability after cancel (must be available: true)
+echo -n "10. Verifying slot availability after cancellation ... "
+SLOTS_AFTER_CANCEL=$(curl -s -H "X-API-Key: $API_KEY" "$BASE_URL/slots")
+if ! echo "$SLOTS_AFTER_CANCEL" | grep -q '"available":true'; then
+  fail "Slot smoke-s1 not marked available after cancellation ($SLOTS_AFTER_CANCEL)"
+fi
+echo "PASSED"
+
+# 11. Rebook slot after cancellation (must succeed with 201)
+echo -n "11. Testing rebooking after cancellation ... "
+REBOOK_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/bookings" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \
   -d '{
-    "slot_id": "unknown-slot-999",
-    "name": "Ada Obi",
-    "email": "ada@example.com"
+    "slot_id": "smoke-s1",
+    "name": "Rebooking Patient",
+    "email": "rebook@example.com"
   }')
-UNKNOWN_SLOT_STATUS=$(echo "$UNKNOWN_SLOT_RESPONSE" | tail -n 1)
-UNKNOWN_SLOT_BODY=$(echo "$UNKNOWN_SLOT_RESPONSE" | head -n -1)
+REBOOK_STATUS=$(echo "$REBOOK_RESPONSE" | tail -n 1)
+REBOOK_BODY=$(echo "$REBOOK_RESPONSE" | head -n -1)
 
-if [ "$UNKNOWN_SLOT_STATUS" -ne 404 ] || ! echo "$UNKNOWN_SLOT_BODY" | grep -q "slot not found"; then
-  fail "Status: $UNKNOWN_SLOT_STATUS, Body: $UNKNOWN_SLOT_BODY"
+if [ "$REBOOK_STATUS" -ne 201 ]; then
+  fail "Status: $REBOOK_STATUS, Body: $REBOOK_BODY"
+fi
+echo "PASSED (201)"
+
+# 12. Cancel non-existent booking (404 check)
+echo -n "12. Testing DELETE /bookings/nonexistent (404 check) ... "
+NOT_FOUND_CANCEL=$(curl -s -w "\n%{http_code}" -X DELETE -H "X-API-Key: $API_KEY" "$BASE_URL/bookings/nonexistent-id")
+NOT_FOUND_CANCEL_STATUS=$(echo "$NOT_FOUND_CANCEL" | tail -n 1)
+NOT_FOUND_CANCEL_BODY=$(echo "$NOT_FOUND_CANCEL" | head -n -1)
+
+if [ "$NOT_FOUND_CANCEL_STATUS" -ne 404 ] || ! echo "$NOT_FOUND_CANCEL_BODY" | grep -q "booking not found"; then
+  fail "Status: $NOT_FOUND_CANCEL_STATUS, Body: $NOT_FOUND_CANCEL_BODY"
 fi
 echo "PASSED (404)"
 
-echo "=== All Level 1 & Level 2 Smoke Tests Passed Successfully ==="
+# 13. Cancelled booking still retrievable
+echo -n "13. Testing GET on cancelled booking ... "
+GET_CANCELLED=$(curl -s -w "\n%{http_code}" -H "X-API-Key: $API_KEY" "$BASE_URL/bookings/$BOOKING_ID")
+GET_CANCELLED_STATUS=$(echo "$GET_CANCELLED" | tail -n 1)
+GET_CANCELLED_BODY=$(echo "$GET_CANCELLED" | head -n -1)
+
+if [ "$GET_CANCELLED_STATUS" -ne 200 ] || ! echo "$GET_CANCELLED_BODY" | grep -q '"status":"cancelled"'; then
+  fail "Status: $GET_CANCELLED_STATUS, Body: $GET_CANCELLED_BODY"
+fi
+echo "PASSED (200)"
+
+echo "=== All Level 1, Level 2, and Level 3 Smoke Tests Passed Successfully ==="
