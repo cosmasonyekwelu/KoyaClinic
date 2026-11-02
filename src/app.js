@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const routes = require('./routes');
+const proxyRoutes = require('./routes/proxy.routes');
 const notFoundHandler = require('./middleware/notFound.middleware');
 const errorHandler = require('./middleware/error.middleware');
 
@@ -20,6 +21,9 @@ app.use(express.static(publicDirectoryPath));
 app.get('/', (req, res) => {
   res.sendFile(path.join(publicDirectoryPath, 'index.html'));
 });
+
+// Mount secure client proxy routes for frontend
+app.use('/api', proxyRoutes);
 
 // Mount API routes
 app.use(routes);

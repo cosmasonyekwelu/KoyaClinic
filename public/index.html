@@ -9,52 +9,234 @@
 <body>
   <div class="container">
     <header class="header">
-      <h1>Koya Clinic</h1>
-      <p class="tagline">Online Appointment Booking System</p>
-      <div id="api-status" class="status-badge">Checking API health...</div>
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">🩺</span>
+        <div class="brand-text">
+          <h1>Koya Clinic</h1>
+          <p class="tagline">Online Healthcare Appointment Booking</p>
+        </div>
+      </div>
+      <div class="status-wrap">
+        <span id="api-status" class="status-badge checking" role="status" aria-live="polite">Checking service...</span>
+      </div>
     </header>
 
     <main class="main-content">
-      <section class="card">
-        <h2>Available Appointments</h2>
-        <p class="description">Select a healthcare provider and book an available slot.</p>
-        
-        <div class="filters">
-          <label for="provider-select">Provider:</label>
-          <select id="provider-select">
-            <option value="">All Providers</option>
-          </select>
-          <button id="refresh-slots" class="btn btn-secondary">Refresh</button>
+      <!-- 1. Available Appointments Section -->
+      <section class="card" aria-labelledby="slots-heading">
+        <div class="card-header">
+          <div>
+            <h2 id="slots-heading">Available Appointments</h2>
+            <p class="description">Browse available time slots, choose a provider, and select a slot to book.</p>
+          </div>
+          <div class="controls-toolbar">
+            <div class="filter-group">
+              <label for="provider-select">Provider:</label>
+              <select id="provider-select" aria-label="Filter by healthcare provider">
+                <option value="">All Providers</option>
+              </select>
+            </div>
+            <button id="refresh-slots-btn" class="btn btn-secondary" type="button" aria-label="Refresh available appointment slots">
+              <span class="refresh-icon" aria-hidden="true">🔄</span> Refresh Slots
+            </button>
+          </div>
         </div>
 
-        <div id="slots-container" class="slots-grid">
-          <p class="placeholder-text">Slots will be displayed here once Level 1 is activated.</p>
+        <div id="slots-loading" class="loading-state" style="display: none;" role="status">
+          <div class="spinner" aria-hidden="true"></div>
+          <p>Loading appointment slots...</p>
+        </div>
+
+        <div id="slots-error" class="alert alert-error" style="display: none;" role="alert"></div>
+
+        <div id="slots-empty" class="empty-state" style="display: none;">
+          <p>No appointment slots available for the selected criteria.</p>
+        </div>
+
+        <div id="slots-container" class="slots-grid" role="region" aria-label="Appointment Slots List">
+          <!-- Slots rendered dynamically -->
         </div>
       </section>
 
-      <section class="card booking-form-section">
-        <h2>Book a Slot</h2>
-        <form id="booking-form">
-          <div class="form-group">
-            <label for="selected-slot">Selected Slot ID</label>
-            <input type="text" id="selected-slot" name="slot_id" readonly placeholder="Select a slot from above">
+      <!-- 2. Booking Form Section -->
+      <section id="booking-section" class="card booking-card" aria-labelledby="booking-heading">
+        <h2 id="booking-heading">Book an Appointment</h2>
+        <p class="description">Select a time slot from the list above, then fill out patient information below.</p>
+
+        <div id="selected-slot-details" class="selected-slot-banner" style="display: none;">
+          <span class="banner-label">Selected Appointment:</span>
+          <div class="banner-body">
+            <div><strong id="banner-provider">-</strong></div>
+            <div><span id="banner-datetime">-</span></div>
+            <div class="banner-sub"><small>Slot ID: <span id="banner-slot-id">-</span></small></div>
           </div>
+        </div>
+
+        <form id="booking-form" novalidate>
           <div class="form-group">
-            <label for="patient-name">Full Name</label>
-            <input type="text" id="patient-name" name="name" required placeholder="e.g. Ada Obi">
+            <label for="booking-slot-id">Slot ID <span class="required" aria-hidden="true">*</span></label>
+            <input
+              type="text"
+              id="booking-slot-id"
+              name="slot_id"
+              readonly
+              required
+              aria-describedby="slot-help"
+              placeholder="Please click 'Select Slot' on an available appointment above"
+            >
+            <span id="slot-help" class="form-hint">Click an available appointment above to populate this field.</span>
           </div>
+
           <div class="form-group">
-            <label for="patient-email">Email Address</label>
-            <input type="email" id="patient-email" name="email" required placeholder="e.g. ada@example.com">
+            <label for="patient-name">Patient Full Name <span class="required" aria-hidden="true">*</span></label>
+            <input
+              type="text"
+              id="patient-name"
+              name="name"
+              required
+              autocomplete="name"
+              placeholder="e.g. Ada Obi"
+            >
+            <span id="name-error" class="field-error" style="display: none;">Please enter your full name.</span>
           </div>
-          <button type="submit" id="submit-booking" class="btn btn-primary">Confirm Booking</button>
+
+          <div class="form-group">
+            <label for="patient-email">Email Address <span class="required" aria-hidden="true">*</span></label>
+            <input
+              type="email"
+              id="patient-email"
+              name="email"
+              required
+              autocomplete="email"
+              placeholder="e.g. ada@example.com"
+            >
+            <span id="email-error" class="field-error" style="display: none;">Please enter a valid email address.</span>
+          </div>
+
+          <div id="booking-error-alert" class="alert alert-error" style="display: none;" role="alert"></div>
+
+          <div class="form-actions">
+            <button type="submit" id="submit-booking-btn" class="btn btn-primary">
+              <span id="btn-text">Confirm Booking</span>
+              <span id="btn-spinner" class="btn-spinner" style="display: none;" aria-hidden="true"></span>
+            </button>
+            <button type="button" id="cancel-selection-btn" class="btn btn-outline" style="display: none;">
+              Clear Selection
+            </button>
+          </div>
         </form>
-        <div id="booking-result" class="result-message"></div>
+      </section>
+
+      <!-- 3. Booking Confirmation Section -->
+      <section id="confirmation-section" class="card confirmation-card" style="display: none;" aria-labelledby="confirmation-heading">
+        <div class="confirmation-header">
+          <span class="confirmation-icon" aria-hidden="true">✅</span>
+          <div>
+            <h2 id="confirmation-heading">Appointment Confirmed!</h2>
+            <p class="description">Your booking has been registered successfully. Save your Booking ID for your records.</p>
+          </div>
+        </div>
+
+        <div class="confirmation-details-grid">
+          <div class="detail-row">
+            <span class="detail-label">Booking ID</span>
+            <span id="conf-booking-id" class="detail-value highlight-id">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Patient Name</span>
+            <span id="conf-patient-name" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Email Address</span>
+            <span id="conf-email" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Healthcare Provider</span>
+            <span id="conf-provider" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Appointment Date</span>
+            <span id="conf-date" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Appointment Time</span>
+            <span id="conf-time" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Booking Status</span>
+            <span id="conf-status" class="status-badge status-confirmed">-</span>
+          </div>
+        </div>
+
+        <div class="confirmation-actions">
+          <button type="button" id="lookup-this-booking-btn" class="btn btn-secondary">
+            Look up this booking
+          </button>
+          <button type="button" id="book-another-btn" class="btn btn-outline">
+            Book Another Slot
+          </button>
+        </div>
+      </section>
+
+      <!-- 4. Booking Lookup Section -->
+      <section class="card lookup-card" aria-labelledby="lookup-heading">
+        <h2 id="lookup-heading">Find an Existing Booking</h2>
+        <p class="description">Already booked an appointment? Enter your Booking ID below to check details.</p>
+
+        <form id="lookup-form" class="lookup-form" novalidate>
+          <div class="lookup-input-wrap">
+            <label for="lookup-booking-id" class="sr-only">Booking ID</label>
+            <input
+              type="text"
+              id="lookup-booking-id"
+              name="booking_id"
+              required
+              placeholder="Enter Booking ID (e.g. b1 or UUID)"
+            >
+            <button type="submit" id="lookup-submit-btn" class="btn btn-secondary">
+              <span id="lookup-btn-text">Look Up Booking</span>
+              <span id="lookup-btn-spinner" class="btn-spinner" style="display: none;" aria-hidden="true"></span>
+            </button>
+          </div>
+        </form>
+
+        <div id="lookup-error-alert" class="alert alert-error" style="display: none;" role="alert"></div>
+
+        <div id="lookup-result-panel" class="confirmation-details-grid lookup-result" style="display: none;">
+          <div class="detail-row">
+            <span class="detail-label">Booking ID</span>
+            <span id="look-booking-id" class="detail-value highlight-id">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Patient Name</span>
+            <span id="look-patient-name" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Email Address</span>
+            <span id="look-email" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Healthcare Provider</span>
+            <span id="look-provider" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Appointment Date</span>
+            <span id="look-date" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Appointment Time</span>
+            <span id="look-time" class="detail-value">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Booking Status</span>
+            <span id="look-status" class="status-badge">-</span>
+          </div>
+        </div>
       </section>
     </main>
 
     <footer class="footer">
-      <p>&copy; 2026 Koya Clinic. Task 1 Assessment API.</p>
+      <p>&copy; 2026 Koya Clinic. Connected securely to the live booking service.</p>
     </footer>
   </div>
 
