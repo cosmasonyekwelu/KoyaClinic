@@ -39,3 +39,13 @@ model Booking {
   @@index([created_at])
   @@map("bookings")
 }
+
+model IdempotencyKey {
+  key          String   @id
+  requestHash  String   @map("request_hash")
+  statusCode   Int      @map("status_code")
+  responseBody Json     @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("idempotency_keys")
+}

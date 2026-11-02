@@ -1,3 +1,5 @@
+const { checkExistingIdempotencyKey, recordIdempotentError } = require('../services/booking.service');
+
 /**
  * Email validation regex following standard email format.
  * Checks for non-empty local part, @ symbol, domain name and valid TLD.
@@ -6,25 +8,42 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Validates and sanitizes booking input fields.
- *
- * Rules:
- * - Required fields: slot_id, name, email
- * - All fields must be non-empty strings.
- * - Trim whitespace.
- * - Normalize email to lowercase.
- * - Validate email format.
- * - Reject missing fields (HTTP 400).
- * - Reject empty strings (HTTP 400).
- * - Reject invalid data types (HTTP 400).
+ * If Idempotency-Key is provided, checks for key reuse / replay before returning validation errors,
+ * and records validation errors in idempotency store if applicable.
  */
-function validateBookingInput(req, res, next) {
-  const body = req.body;
+async function validateBookingInput(req, res, next) {
+  const idempotencyKey = req.header('idempotency-key') || req.header('Idempotency-Key');
+  const rawBody = req.body;
 
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return res.status(400).json({ error: 'invalid booking payload' });
+  // 1. If an idempotency key was supplied, check if it already exists
+  if (idempotencyKey) {
+    try {
+      const existing = await checkExistingIdempotencyKey(idempotencyKey, rawBody);
+      if (existing) {
+        // Return cached response directly
+        return res.status(existing.statusCode).json(existing.body);
+      }
+    } catch (err) {
+      if (err.statusCode === 422) {
+        return res.status(422).json({ error: err.message });
+      }
+      return next(err);
+    }
   }
 
-  const { slot_id, name, email } = body;
+  // 2. Helper to respond with 400 error and record in idempotency table if key present
+  const sendValidationError = async (message) => {
+    if (idempotencyKey) {
+      await recordIdempotentError(idempotencyKey, rawBody, 400, message);
+    }
+    return res.status(400).json({ error: message });
+  };
+
+  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    return await sendValidationError('invalid booking payload');
+  }
+
+  const { slot_id, name, email } = rawBody;
 
   // Check types: must be string
   if (
@@ -32,7 +51,7 @@ function validateBookingInput(req, res, next) {
     typeof name !== 'string' ||
     typeof email !== 'string'
   ) {
-    return res.status(400).json({ error: 'invalid or missing fields' });
+    return await sendValidationError('invalid or missing fields');
   }
 
   // Trim values
@@ -42,7 +61,7 @@ function validateBookingInput(req, res, next) {
 
   // Reject empty strings after trim
   if (!trimmedSlotId || !trimmedName || !trimmedEmail) {
-    return res.status(400).json({ error: 'fields cannot be empty' });
+    return await sendValidationError('fields cannot be empty');
   }
 
   // Normalize email to lowercase
@@ -50,12 +69,14 @@ function validateBookingInput(req, res, next) {
 
   // Validate email format
   if (!EMAIL_REGEX.test(normalizedEmail)) {
-    return res.status(400).json({ error: 'invalid email format' });
+    return await sendValidationError('invalid email format');
   }
 
-  // Attach sanitized fields to req.body
+  // Store raw and sanitized fields
+  req.rawBody = rawBody;
+  req.idempotencyKey = idempotencyKey;
   req.body = {
-    ...body,
+    ...rawBody,
     slot_id: trimmedSlotId,
     name: trimmedName,
     email: normalizedEmail,

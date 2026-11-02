@@ -2,10 +2,13 @@ const prisma = require('../db');
 
 /**
  * Resets slots and bookings inside a database transaction.
+ * Also clears idempotency keys to ensure clean test state.
  * @param {Array<{ id: string, provider: string, start: string, end: string }>} slots
  */
 async function resetSlots(slots = []) {
   return await prisma.$transaction(async (tx) => {
+    // Delete existing idempotency keys
+    await tx.idempotencyKey.deleteMany();
     // Delete existing bookings first (though cascade is enabled on slots, deleting explicitly is clean)
     await tx.booking.deleteMany();
     // Delete existing slots
