@@ -1,21 +1,29 @@
 const express = require('express');
 const router = express.Router();
 
-const DEPLOYED_API_URL = (
-  process.env.DEPLOYED_API_URL || 'https://koya-clinic-booking-api.onrender.com'
-).replace(/\/+$/, '');
-
-const API_KEY = process.env.API_KEY || 'koya-secret-key-2026';
-
 /**
- * Helper to forward requests to the deployed API
+ * Helper to forward requests to the backend API.
+ * Uses DEPLOYED_API_URL if configured; otherwise defaults to the local server instance.
  */
-async function forwardRequest(path, options = {}) {
-  const url = `${DEPLOYED_API_URL}${path}`;
+function getTargetBaseUrl(req) {
+  if (process.env.DEPLOYED_API_URL) {
+    return process.env.DEPLOYED_API_URL.replace(/\/+$/, '');
+  }
+  const host = req.get('host') || `localhost:${process.env.PORT || 3000}`;
+  const protocol = req.protocol || 'http';
+  return `${protocol}://${host}`;
+}
+
+async function forwardRequest(req, path, options = {}) {
+  const baseUrl = getTargetBaseUrl(req);
+  const url = `${baseUrl}${path}`;
   const headers = {
-    'X-API-Key': API_KEY,
     ...(options.headers || {}),
   };
+
+  if (process.env.API_KEY) {
+    headers['X-API-Key'] = process.env.API_KEY;
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -41,26 +49,26 @@ router.get('/slots', async (req, res) => {
   try {
     const searchParams = new URLSearchParams(req.query).toString();
     const targetPath = `/slots${searchParams ? `?${searchParams}` : ''}`;
-    const result = await forwardRequest(targetPath, {
+    const result = await forwardRequest(req, targetPath, {
       method: 'GET',
     });
     return res.status(result.status).json(result.data);
   } catch (err) {
     console.error('Proxy GET /slots error:', err);
-    return res.status(502).json({ error: 'Failed to fetch slots from booking service' });
+    return res.status(502).json({ error: 'Failed to fetch slots' });
   }
 });
 
 /**
  * POST /api/bookings
- * Forward to deployed POST /bookings
+ * Forward to POST /bookings
  */
 router.post('/bookings', async (req, res) => {
   try {
     const { slot_id, name, email } = req.body || {};
     const idempotencyKey = req.header('Idempotency-Key') || `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const result = await forwardRequest('/bookings', {
+    const result = await forwardRequest(req, '/bookings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -72,24 +80,24 @@ router.post('/bookings', async (req, res) => {
     return res.status(result.status).json(result.data);
   } catch (err) {
     console.error('Proxy POST /bookings error:', err);
-    return res.status(502).json({ error: 'Failed to submit booking to booking service' });
+    return res.status(502).json({ error: 'Failed to submit booking' });
   }
 });
 
 /**
  * GET /api/bookings/:id
- * Forward to deployed GET /bookings/:id
+ * Forward to GET /bookings/:id
  */
 router.get('/bookings/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await forwardRequest(`/bookings/${encodeURIComponent(id)}`, {
+    const result = await forwardRequest(req, `/bookings/${encodeURIComponent(id)}`, {
       method: 'GET',
     });
     return res.status(result.status).json(result.data);
   } catch (err) {
     console.error('Proxy GET /bookings/:id error:', err);
-    return res.status(502).json({ error: 'Failed to retrieve booking from booking service' });
+    return res.status(502).json({ error: 'Failed to retrieve booking' });
   }
 });
 
