@@ -1,12 +1,14 @@
 /**
  * Koya Clinic Appointment Booking Frontend Application
- * Interacts with /api server-side proxy connected to the deployed booking API.
+ * Interacts with /api server-side proxy connected to the booking API.
+ * Uses Africa/Lagos (WAT, UTC+1) timezone consistently.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const apiStatus = document.getElementById('api-status');
   const providerSelect = document.getElementById('provider-select');
+  const dateSelect = document.getElementById('date-select');
   const refreshSlotsBtn = document.getElementById('refresh-slots-btn');
   const slotsLoading = document.getElementById('slots-loading');
   const slotsError = document.getElementById('slots-error');
@@ -65,29 +67,37 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastConfirmedBooking = null;
 
   /**
-   * Format ISO date string into readable Date and Time
+   * Format ISO date string into readable Date and Time using Africa/Lagos (WAT, UTC+1) timezone
    */
   function formatDateTime(isoString) {
-    if (!isoString) return { date: '-', time: '-' };
+    if (!isoString) return { date: '-', time: '-', dateKey: '' };
     const d = new Date(isoString);
-    if (isNaN(d.getTime())) return { date: isoString, time: isoString };
+    if (isNaN(d.getTime())) return { date: isoString, time: isoString, dateKey: '' };
 
     const date = d.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      timeZone: 'UTC',
+      timeZone: 'Africa/Lagos',
     });
 
     const time = d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
-      timeZone: 'UTC',
+      timeZone: 'Africa/Lagos',
     });
 
-    return { date, time };
+    // Consistent YYYY-MM-DD for filter matching in Africa/Lagos
+    const dateKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Lagos',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+
+    return { date, time, dateKey };
   }
 
   /**
@@ -113,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /**
    * Fetch slots from proxy GET /api/slots
+   * Supports doctor/provider filtering via query param where supported by the API
    */
   async function fetchSlots(silent = false) {
     if (!silent) {
@@ -134,17 +145,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const rawSlots = Array.isArray(data.slots) ? data.slots : [];
       allSlots = rawSlots;
 
-      // Update provider filter options without resetting current selection
-      updateProviderOptions(rawSlots);
+      // Update doctor and date filter options dynamically
+      updateFilterOptions(rawSlots);
 
-      // Render slots
-      renderSlots(rawSlots);
+      // Render filtered slots based on current selections
+      applyFiltersAndRender();
 
-      // Check if selected slot became unavailable in background
+      // Check if previously selected slot became unavailable in background
       if (selectedSlot) {
         const currentSlotInList = rawSlots.find(s => s.id === selectedSlot.id);
         if (currentSlotInList && !currentSlotInList.available) {
-          bookingErrorAlert.textContent = 'The slot you selected was just booked by someone else. Please choose another slot.';
+          bookingErrorAlert.textContent = 'The slot you selected was just booked by someone else. Please choose another available slot.';
           bookingErrorAlert.style.display = 'block';
           clearSelection();
         }
@@ -162,37 +173,83 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * Update provider dropdown list
+   * Update filter dropdown options (Doctor and Date) dynamically from API slots
    */
-  function updateProviderOptions(slots) {
-    const currentVal = providerSelect.value;
+  function updateFilterOptions(slots) {
+    // 1. Providers
+    const currentProvider = providerSelect.value;
     const providers = new Set();
     slots.forEach(s => {
       if (s.provider) providers.add(s.provider);
     });
 
-    // If options already match, do not rebuild
-    const existingOptions = Array.from(providerSelect.options)
+    const existingProviderOptions = Array.from(providerSelect.options)
       .map(o => o.value)
       .filter(Boolean);
     const newProviders = Array.from(providers);
 
-    if (existingOptions.length === newProviders.length && existingOptions.every(p => providers.has(p))) {
-      return;
+    // Only rebuild provider options if options have changed
+    if (!(existingProviderOptions.length === newProviders.length && existingProviderOptions.every(p => providers.has(p)))) {
+      providerSelect.innerHTML = '<option value="">All Doctors</option>';
+      newProviders.sort().forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        providerSelect.appendChild(opt);
+      });
+      if (providers.has(currentProvider)) {
+        providerSelect.value = currentProvider;
+      }
     }
 
-    // Keep "All Providers"
-    providerSelect.innerHTML = '<option value="">All Providers</option>';
-    newProviders.sort().forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p;
-      opt.textContent = p;
-      providerSelect.appendChild(opt);
+    // 2. Dates (Africa/Lagos)
+    const currentDate = dateSelect ? dateSelect.value : '';
+    const dateMap = new Map(); // dateKey -> formattedLabel
+    slots.forEach(s => {
+      if (s.start) {
+        const { date, dateKey } = formatDateTime(s.start);
+        if (dateKey && !dateMap.has(dateKey)) {
+          dateMap.set(dateKey, date);
+        }
+      }
     });
 
-    if (providers.has(currentVal)) {
-      providerSelect.value = currentVal;
+    if (dateSelect) {
+      const existingDateOptions = Array.from(dateSelect.options)
+        .map(o => o.value)
+        .filter(Boolean);
+      const sortedDateKeys = Array.from(dateMap.keys()).sort();
+
+      if (!(existingDateOptions.length === sortedDateKeys.length && existingDateOptions.every((d, i) => d === sortedDateKeys[i]))) {
+        dateSelect.innerHTML = '<option value="">All Dates</option>';
+        sortedDateKeys.forEach(dateKey => {
+          const opt = document.createElement('option');
+          opt.value = dateKey;
+          opt.textContent = dateMap.get(dateKey);
+          dateSelect.appendChild(opt);
+        });
+        if (dateMap.has(currentDate)) {
+          dateSelect.value = currentDate;
+        }
+      }
     }
+  }
+
+  /**
+   * Applies client-side date filter (and renders slots)
+   */
+  function applyFiltersAndRender() {
+    const selectedDate = dateSelect ? dateSelect.value : '';
+    let filtered = allSlots;
+
+    if (selectedDate) {
+      filtered = filtered.filter(slot => {
+        const { dateKey } = formatDateTime(slot.start);
+        return dateKey === selectedDate;
+      });
+    }
+
+    renderSlots(filtered);
   }
 
   /**
@@ -228,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="slot-body">
           <div class="slot-date">📅 ${startFormatted.date}</div>
-          <div class="slot-time">⏰ ${startFormatted.time} – ${endFormatted.time} (UTC)</div>
+          <div class="slot-time">⏰ ${startFormatted.time} – ${endFormatted.time} (WAT)</div>
           <div class="slot-id-tag">Slot #${escapeHtml(slot.id)}</div>
         </div>
         <div class="slot-action">
@@ -244,8 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       if (isAvailable) {
-        card.addEventListener('click', (e) => {
-          // Prevent click loop if button itself clicked
+        card.addEventListener('click', () => {
           selectSlot(slot);
         });
       }
@@ -267,14 +323,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const startFormatted = formatDateTime(slot.start);
     const endFormatted = formatDateTime(slot.end);
     bannerProvider.textContent = slot.provider;
-    bannerDatetime.textContent = `${startFormatted.date} from ${startFormatted.time} to ${endFormatted.time} (UTC)`;
+    bannerDatetime.textContent = `${startFormatted.date} from ${startFormatted.time} to ${endFormatted.time} (WAT)`;
     bannerSlotId.textContent = slot.id;
     selectedSlotBanner.style.display = 'block';
     cancelSelectionBtn.style.display = 'inline-flex';
     bookingErrorAlert.style.display = 'none';
 
     // Rerender slot grid to update selection styles
-    renderSlots(allSlots);
+    applyFiltersAndRender();
 
     // Scroll booking form into view smoothly
     document.getElementById('booking-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -288,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bookingSlotIdInput.value = '';
     selectedSlotBanner.style.display = 'none';
     cancelSelectionBtn.style.display = 'none';
-    renderSlots(allSlots);
+    applyFiltersAndRender();
   }
 
   /**
@@ -369,6 +425,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
 
       if (!res.ok) {
+        // If conflict (409) or slot already booked, immediately clear selection & refresh availability
+        if (res.status === 409 || (data.error && data.error.includes('already booked'))) {
+          clearSelection();
+          await fetchSlots(true);
+          throw new Error('This slot has already been booked by another patient. Please choose another slot.');
+        }
         throw new Error(data.error || 'Failed to complete booking');
       }
 
@@ -381,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
       patientEmailInput.value = '';
       clearSelection();
 
-      // Refresh slot list to show updated availability
+      // Immediately refresh slots to show updated availability
       await fetchSlots(true);
     } catch (err) {
       bookingErrorAlert.textContent = err.message || 'An error occurred while booking. Please try again.';
@@ -410,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const endTimes = formatDateTime(slotDetails.end);
       confProvider.textContent = slotDetails.provider;
       confDate.textContent = times.date;
-      confTime.textContent = `${times.time} – ${endTimes.time} (UTC)`;
+      confTime.textContent = `${times.time} – ${endTimes.time} (WAT)`;
     } else {
       confProvider.textContent = booking.provider || 'Assigned Provider';
       confDate.textContent = booking.date || formatDateTime(booking.created_at).date;
@@ -457,12 +519,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const endTimes = formatDateTime(matchingSlot.end);
         lookProvider.textContent = matchingSlot.provider;
         lookDate.textContent = times.date;
-        lookTime.textContent = `${times.time} – ${endTimes.time} (UTC)`;
+        lookTime.textContent = `${times.time} – ${endTimes.time} (WAT)`;
       } else {
         lookProvider.textContent = data.provider || `Slot ${data.slot_id}`;
         const createdTimes = formatDateTime(data.created_at);
         lookDate.textContent = `Created: ${createdTimes.date}`;
-        lookTime.textContent = createdTimes.time;
+        lookTime.textContent = `${createdTimes.time} (WAT)`;
       }
 
       lookupResultPanel.style.display = 'grid';
@@ -504,8 +566,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   providerSelect.addEventListener('change', () => {
+    // When provider dropdown changes, fetch from API with ?provider=...
     fetchSlots(false);
   });
+
+  if (dateSelect) {
+    dateSelect.addEventListener('change', () => {
+      // Re-filter and render slots by selected date
+      applyFiltersAndRender();
+    });
+  }
 
   // Simple HTML Escaping
   function escapeHtml(str) {
@@ -522,7 +592,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkHealth();
   fetchSlots(false);
 
-  // Periodic polling every 30 seconds (silent refresh without disrupting user input)
+  // Periodic polling every 30 seconds
   setInterval(() => {
     fetchSlots(true);
   }, 30000);
