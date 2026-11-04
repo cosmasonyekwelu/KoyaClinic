@@ -3,10 +3,11 @@ const app = require('../src/app');
 
 describe('Clinic Booking API Foundation Tests', () => {
   describe('GET /health', () => {
-    it('should return 200 and { "ok": true }', async () => {
+    it('should return 200 and { "ok": true, "db": "up" | "down" }', async () => {
       const res = await request(app).get('/health');
       expect(res.statusCode).toBe(200);
-      expect(res.body).toEqual({ ok: true });
+      expect(res.body.ok).toBe(true);
+      expect(['up', 'down']).toContain(res.body.db);
     });
   });
 
