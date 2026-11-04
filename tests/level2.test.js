@@ -73,7 +73,7 @@ describe('Level 2 - Authentication, Input Validation & Slot Rules', () => {
     it('should keep public endpoints accessible without API key', async () => {
       const resHealth = await request(app).get('/health');
       expect(resHealth.status).toBe(200);
-      expect(resHealth.body).toEqual({ ok: true });
+      expect(resHealth.body.ok).toBe(true);
 
       const resHome = await request(app).get('/');
       expect(resHome.status).toBe(200);

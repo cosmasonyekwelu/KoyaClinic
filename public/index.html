@@ -31,13 +31,19 @@
           </div>
           <div class="controls-toolbar">
             <div class="filter-group">
-              <label for="provider-select">Provider:</label>
+              <label for="provider-select">Doctor:</label>
               <select id="provider-select" aria-label="Filter by healthcare provider">
-                <option value="">All Providers</option>
+                <option value="">All Doctors</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="date-select">Date:</label>
+              <select id="date-select" aria-label="Filter by appointment date">
+                <option value="">All Dates</option>
               </select>
             </div>
             <button id="refresh-slots-btn" class="btn btn-secondary" type="button" aria-label="Refresh available appointment slots">
-              <span class="refresh-icon" aria-hidden="true">🔄</span> Refresh Slots
+              <span class="refresh-icon" aria-hidden="true">🔄</span> Refresh
             </button>
           </div>
         </div>
