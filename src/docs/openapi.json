@@ -1,0 +1,818 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Clinic Booking API",
+    "description": "Production-grade RESTful API for clinic appointment scheduling, concurrency-safe booking, keyset pagination, and idempotent request processing.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Koya Academy Clinic Support",
+      "url": "https://koya-clinic-booking-api.onrender.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://koyaclinic.onrender.com",
+      "description": "Production Server (Render)"
+    },
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development Server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Service health check and monitoring endpoints"
+    },
+    {
+      "name": "Slots",
+      "description": "Appointment availability and provider slot schedules"
+    },
+    {
+      "name": "Bookings",
+      "description": "Appointment reservations, retrieval, keyset pagination, and cancellations"
+    },
+    {
+      "name": "System",
+      "description": "Administrative and assessment test state management"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Standard API key authentication header required for all assessment and booking management endpoints. Provide your assigned key directly."
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable description of the error."
+          }
+        },
+        "example": {
+          "error": "unauthorized"
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          }
+        }
+      },
+      "Slot": {
+        "type": "object",
+        "required": ["id", "provider", "start", "end", "available"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the appointment slot.",
+            "example": "s1"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Name or title of the medical healthcare provider.",
+            "example": "Dr Ade"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC timestamp marking the slot start time.",
+            "example": "2026-12-10T09:00:00.000Z"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC timestamp marking the slot end time.",
+            "example": "2026-12-10T09:30:00.000Z"
+          },
+          "available": {
+            "type": "boolean",
+            "description": "Indicates whether the slot is open for booking (`true`) or already has a confirmed booking (`false`).",
+            "example": true
+          }
+        }
+      },
+      "SlotInput": {
+        "type": "object",
+        "required": ["id", "provider", "start", "end"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique slot identifier.",
+            "example": "s1"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Name of the healthcare provider.",
+            "example": "Dr Ade"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC timestamp for slot start.",
+            "example": "2026-12-10T09:00:00Z"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC timestamp for slot end.",
+            "example": "2026-12-10T09:30:00Z"
+          }
+        }
+      },
+      "ResetPayload": {
+        "type": "object",
+        "required": ["slots"],
+        "properties": {
+          "slots": {
+            "type": "array",
+            "description": "Array of slots to replace the existing database slots with.",
+            "items": {
+              "$ref": "#/components/schemas/SlotInput"
+            }
+          }
+        },
+        "example": {
+          "slots": [
+            {
+              "id": "s1",
+              "provider": "Dr Ade",
+              "start": "2026-12-10T09:00:00Z",
+              "end": "2026-12-10T09:30:00Z"
+            },
+            {
+              "id": "s2",
+              "provider": "Dr Chioma",
+              "start": "2026-12-10T10:00:00Z",
+              "end": "2026-12-10T10:30:00Z"
+            }
+          ]
+        }
+      },
+      "SlotsResponse": {
+        "type": "object",
+        "required": ["slots"],
+        "properties": {
+          "slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Slot"
+            }
+          }
+        }
+      },
+      "BookingInput": {
+        "type": "object",
+        "required": ["slot_id", "name", "email"],
+        "properties": {
+          "slot_id": {
+            "type": "string",
+            "description": "ID of the target slot. Must exist and start in the future.",
+            "example": "s1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Full name of the patient. Trimmed automatically.",
+            "example": "Ada Lovelace"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Valid patient email address. Automatically trimmed and converted to lowercase.",
+            "example": "ada@example.com"
+          }
+        }
+      },
+      "Booking": {
+        "type": "object",
+        "required": ["id", "slot_id", "name", "email", "status", "created_at"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Globally unique UUID assigned to the booking.",
+            "example": "e4a2c5a0-53be-4395-9bf6-b489be74bb7c"
+          },
+          "slot_id": {
+            "type": "string",
+            "description": "Slot identifier associated with this booking.",
+            "example": "s1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Sanitized patient name.",
+            "example": "Ada Lovelace"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Normalized lowercase email address of the patient.",
+            "example": "ada@example.com"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["confirmed", "cancelled"],
+            "description": "Current lifecycle status of the appointment booking.",
+            "example": "confirmed"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC timestamp recording when the booking was submitted.",
+            "example": "2026-11-04T12:00:00.000Z"
+          }
+        }
+      },
+      "PaginatedBookingsResponse": {
+        "type": "object",
+        "required": ["bookings", "next_cursor"],
+        "properties": {
+          "bookings": {
+            "type": "array",
+            "description": "List of confirmed and cancelled bookings belonging to the requested email, sorted oldest first (`created_at ASC, id ASC`).",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Opaque base64url keyset cursor encoding the `created_at` and `id` of the last record. Null on the final page or when results are empty.",
+            "example": "eyJjcmVhdGVkX2F0IjoiMjAyNi0xMS0wNFQxMjowMDowMC4wMDBaIiwiaWQiOiJlNGEyYzVhMC01M2JlLTQzOTUtOWJmNi1iNDg5YmU3NGJiN2MifQ"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health Check",
+        "description": "Verifies that the API service is up and responding. Unauthenticated public endpoint.",
+        "responses": {
+          "200": {
+            "description": "Service is healthy and functional.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reset": {
+      "post": {
+        "tags": ["System"],
+        "summary": "Reset Slots & Database State",
+        "description": "Atomically clears all existing bookings, slots, and idempotency keys, then populates the database with the supplied array of slots. Used for test setup and assessment evaluation.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Object containing the list of new appointment slots.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Database was successfully reset with the provided slots. Returns an empty body."
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` authentication header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database transaction failure or internal server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "Internal server error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/slots": {
+      "get": {
+        "tags": ["Slots"],
+        "summary": "List Appointment Slots",
+        "description": "Retrieves all slots ordered by start time ascending (`start ASC`). Computes `available: false` if an active confirmed booking exists for that slot. Supports exact-match provider filtering.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "description": "Filter slots by exact healthcare provider name (e.g. `Dr Ade`).",
+            "schema": {
+              "type": "string",
+              "example": "Dr Ade"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of slots returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotsResponse"
+                },
+                "example": {
+                  "slots": [
+                    {
+                      "id": "s1",
+                      "provider": "Dr Ade",
+                      "start": "2026-12-10T09:00:00.000Z",
+                      "end": "2026-12-10T09:30:00.000Z",
+                      "available": true
+                    },
+                    {
+                      "id": "s2",
+                      "provider": "Dr Chioma",
+                      "start": "2026-12-10T10:00:00.000Z",
+                      "end": "2026-12-10T10:30:00.000Z",
+                      "available": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` authentication header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bookings": {
+      "post": {
+        "tags": ["Bookings"],
+        "summary": "Create Appointment Booking",
+        "description": "Reserves an open slot for a patient. Supports optional Level 4 `Idempotency-Key` header with database transaction advisory locking to guarantee safe request retries without duplicate bookings. Enforces concurrency control using a PostgreSQL partial unique index.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Optional unique client identifier for idempotent execution. When replayed with an identical body, returns the cached response. If reused with a different body, returns HTTP 422.",
+            "schema": {
+              "type": "string",
+              "example": "req_8f1d8c19a0e64"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Booking payload with target slot ID, patient name, and patient email.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingInput"
+              },
+              "example": {
+                "slot_id": "s1",
+                "name": "Ada Lovelace",
+                "email": "ada@example.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Booking confirmed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                },
+                "example": {
+                  "id": "e4a2c5a0-53be-4395-9bf6-b489be74bb7c",
+                  "slot_id": "s1",
+                  "name": "Ada Lovelace",
+                  "email": "ada@example.com",
+                  "status": "confirmed",
+                  "created_at": "2026-11-04T12:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Input validation failure (missing fields, invalid email format, empty whitespace, or slot already started in the past).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missingFields": {
+                    "summary": "Missing or invalid fields",
+                    "value": {
+                      "error": "invalid or missing fields"
+                    }
+                  },
+                  "emptyFields": {
+                    "summary": "Whitespace or empty values",
+                    "value": {
+                      "error": "fields cannot be empty"
+                    }
+                  },
+                  "invalidEmail": {
+                    "summary": "Invalid email format",
+                    "value": {
+                      "error": "invalid email format"
+                    }
+                  },
+                  "slotStarted": {
+                    "summary": "Slot already started or in past",
+                    "value": {
+                      "error": "slot already started"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` authentication header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested slot does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "slot not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slot already has an active confirmed booking (double-booking prevented).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "slot already booked"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Idempotency key reuse conflict: The provided `Idempotency-Key` was previously submitted with a different request payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "idempotency key reused with a different body"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Bookings"],
+        "summary": "List Bookings by Patient Email (Keyset Pagination)",
+        "description": "Retrieves confirmed and cancelled bookings for a specific patient email, ordered oldest first (`created_at ASC, id ASC`). Employs opaque base64url keyset pagination.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "description": "Patient email address to filter by (case-insensitive, trimmed automatically).",
+            "schema": {
+              "type": "string",
+              "format": "email",
+              "example": "ada@example.com"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Number of items to return per page. Integer between 1 and 50. Defaults to 10.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "example": 10
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque base64url cursor from a previous page's `next_cursor`.",
+            "schema": {
+              "type": "string",
+              "example": "eyJjcmVhdGVkX2F0IjoiMjAyNi0xMS0wNFQxMjowMDowMC4wMDBaIiwiaWQiOiJlNGEyYzVhMC01M2JlLTQzOTUtOWJmNi1iNDg5YmU3NGJiN2MifQ"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated bookings list returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedBookingsResponse"
+                },
+                "example": {
+                  "bookings": [
+                    {
+                      "id": "e4a2c5a0-53be-4395-9bf6-b489be74bb7c",
+                      "slot_id": "s1",
+                      "name": "Ada Lovelace",
+                      "email": "ada@example.com",
+                      "status": "confirmed",
+                      "created_at": "2026-11-04T12:00:00.000Z"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameters (missing email, invalid limit integer, or malformed cursor).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missingEmail": {
+                    "summary": "Missing email parameter",
+                    "value": {
+                      "error": "email is required"
+                    }
+                  },
+                  "invalidLimit": {
+                    "summary": "Invalid limit range or format",
+                    "value": {
+                      "error": "invalid limit"
+                    }
+                  },
+                  "invalidCursor": {
+                    "summary": "Malformed pagination cursor",
+                    "value": {
+                      "error": "invalid cursor"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` authentication header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bookings/{id}": {
+      "get": {
+        "tags": ["Bookings"],
+        "summary": "Retrieve Booking by ID",
+        "description": "Fetches a booking reservation by its unique identifier. Returns the full booking object regardless of whether its status is `confirmed` or `cancelled`.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "UUID of the booking.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "e4a2c5a0-53be-4395-9bf6-b489be74bb7c"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Booking found and returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                },
+                "example": {
+                  "id": "e4a2c5a0-53be-4395-9bf6-b489be74bb7c",
+                  "slot_id": "s1",
+                  "name": "Ada Lovelace",
+                  "email": "ada@example.com",
+                  "status": "confirmed",
+                  "created_at": "2026-11-04T12:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` authentication header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "booking not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Bookings"],
+        "summary": "Cancel Booking",
+        "description": "Atomically cancels an active booking by transitioning its status from `confirmed` to `cancelled`. The record is retained in the database for auditability and remains retrievable via GET endpoints. The slot is freed and becomes immediately available for future bookings.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "UUID of the booking to cancel.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "e4a2c5a0-53be-4395-9bf6-b489be74bb7c"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Booking cancelled successfully. Returns the updated booking object with status `cancelled`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                },
+                "example": {
+                  "id": "e4a2c5a0-53be-4395-9bf6-b489be74bb7c",
+                  "slot_id": "s1",
+                  "name": "Ada Lovelace",
+                  "email": "ada@example.com",
+                  "status": "cancelled",
+                  "created_at": "2026-11-04T12:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` authentication header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "booking not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The booking has already been cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "booking already cancelled"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

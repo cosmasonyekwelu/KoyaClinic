@@ -6,6 +6,15 @@ Official Specification: [https://koyaacademy.com/assessment-api](https://koyaaca
 
 ---
 
+## Live Deployments & Documentation
+
+- **Live Deployed Service**: [https://koyaclinic.onrender.com](https://koyaclinic.onrender.com)
+- **Interactive Swagger UI**: [https://koyaclinic.onrender.com/docs](https://koyaclinic.onrender.com/docs)
+- **OpenAPI 3.0 Specification**: [https://koyaclinic.onrender.com/openapi.json](https://koyaclinic.onrender.com/openapi.json)
+- **Integration & Usage Guide**: [docs/API_GUIDE.md](docs/API_GUIDE.md)
+
+---
+
 ## Tech Stack
 - **Runtime**: Node.js
 - **Framework**: Express.js
@@ -22,6 +31,8 @@ Official Specification: [https://koyaacademy.com/assessment-api](https://koyaaca
 
 ```
 KoyaClinic/
+├── docs/
+│   └── API_GUIDE.md           # Comprehensive integration & usage guide
 ├── prisma/
 │   ├── schema.prisma          # Database schema definition
 │   └── migrations/            # Versioned SQL migrations
@@ -34,6 +45,8 @@ KoyaClinic/
 │   │   ├── booking.controller.js
 │   │   ├── health.controller.js
 │   │   └── slot.controller.js
+│   ├── docs/
+│   │   └── openapi.json       # OpenAPI 3.0 specification
 │   ├── middleware/            # Error handling, 404, auth, validation
 │   │   ├── auth.middleware.js
 │   │   ├── bookingValidation.middleware.js
@@ -43,6 +56,7 @@ KoyaClinic/
 │   │   ├── booking.routes.js
 │   │   ├── health.routes.js
 │   │   ├── index.js
+│   │   ├── proxy.routes.js
 │   │   ├── reset.routes.js
 │   │   └── slot.routes.js
 │   ├── services/              # Business logic (Level 1, Level 2, Level 3, Level 4)
@@ -51,7 +65,7 @@ KoyaClinic/
 │   ├── utils/                 # Shared helpers, idempotency & pagination utils
 │   │   ├── idempotency.util.js
 │   │   └── pagination.util.js
-│   ├── app.js                 # Express application setup
+│   ├── app.js                 # Express application setup with Swagger UI (/docs)
 │   ├── db.js                  # PrismaClient singleton instance
 │   └── index.js               # Server startup & shutdown handling
 ├── scripts/
@@ -59,7 +73,9 @@ KoyaClinic/
 │   ├── level4-concurrency-test.js # Concurrency test suite (Level 4 Idempotency)
 │   └── smoke.sh               # Automated smoke test suite (Levels 1, 2, 3 & 4)
 ├── tests/                     # Automated test suites
-│   ├── health.test.js
+│   ├── docs.test.js           # Swagger UI & OpenAPI endpoint test suite
+│   ├── frontend.test.js       # Web UI & proxy integration test suite
+│   ├── health.test.js         # Health check test suite
 │   ├── level1.test.js
 │   ├── level2.test.js
 │   ├── level3.test.js
