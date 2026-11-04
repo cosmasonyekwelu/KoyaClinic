@@ -1,4 +1,12 @@
 require('dotenv').config();
+
+// Startup assertion for production security (Step 4b / Step 6)
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.API_KEY || process.env.API_KEY.length < 16) {
+    throw new Error('FATAL: API_KEY must be set and at least 16 characters long in production.');
+  }
+}
+
 const app = require('./app');
 const prisma = require('./db');
 

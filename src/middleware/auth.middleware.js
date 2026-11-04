@@ -10,11 +10,30 @@
  * - Store the key in process.env.API_KEY
  * - Never hardcode secrets
  */
+const crypto = require('crypto');
+
 function authMiddleware(req, res, next) {
-  const apiKeyHeader = req.header('x-api-key') || req.header('X-API-Key');
+  // req.get is case-insensitive in Express
+  const apiKeyHeader = req.get('x-api-key');
   const expectedApiKey = process.env.API_KEY;
 
-  if (!apiKeyHeader || !expectedApiKey || apiKeyHeader !== expectedApiKey) {
+  if (
+    !apiKeyHeader ||
+    typeof apiKeyHeader !== 'string' ||
+    apiKeyHeader.trim() === '' ||
+    !expectedApiKey
+  ) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const providedBuf = Buffer.from(apiKeyHeader);
+  const expectedBuf = Buffer.from(expectedApiKey);
+
+  // Timing-safe comparison guarding length differences
+  if (
+    providedBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(providedBuf, expectedBuf)
+  ) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
