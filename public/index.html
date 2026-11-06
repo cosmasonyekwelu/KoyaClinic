@@ -174,7 +174,12 @@
           </div>
         </div>
 
+        <div id="conf-cancel-alert" class="alert" style="display: none;" role="alert"></div>
+
         <div class="confirmation-actions">
+          <button type="button" id="conf-cancel-btn" class="btn btn-danger">
+            Cancel This Appointment
+          </button>
           <button type="button" id="lookup-this-booking-btn" class="btn btn-secondary">
             Look up this booking
           </button>
@@ -208,34 +213,44 @@
 
         <div id="lookup-error-alert" class="alert alert-error" style="display: none;" role="alert"></div>
 
-        <div id="lookup-result-panel" class="confirmation-details-grid lookup-result" style="display: none;">
-          <div class="detail-row">
-            <span class="detail-label">Booking ID</span>
-            <span id="look-booking-id" class="detail-value highlight-id">-</span>
+        <div id="lookup-result-panel" style="display: none;">
+          <div id="look-cancel-alert" class="alert" style="display: none;" role="alert"></div>
+
+          <div class="confirmation-details-grid lookup-result">
+            <div class="detail-row">
+              <span class="detail-label">Booking ID</span>
+              <span id="look-booking-id" class="detail-value highlight-id">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Patient Name</span>
+              <span id="look-patient-name" class="detail-value">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Email Address</span>
+              <span id="look-email" class="detail-value">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Healthcare Provider</span>
+              <span id="look-provider" class="detail-value">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Appointment Date</span>
+              <span id="look-date" class="detail-value">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Appointment Time</span>
+              <span id="look-time" class="detail-value">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Booking Status</span>
+              <span id="look-status" class="status-badge">-</span>
+            </div>
           </div>
-          <div class="detail-row">
-            <span class="detail-label">Patient Name</span>
-            <span id="look-patient-name" class="detail-value">-</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Email Address</span>
-            <span id="look-email" class="detail-value">-</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Healthcare Provider</span>
-            <span id="look-provider" class="detail-value">-</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Appointment Date</span>
-            <span id="look-date" class="detail-value">-</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Appointment Time</span>
-            <span id="look-time" class="detail-value">-</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Booking Status</span>
-            <span id="look-status" class="status-badge">-</span>
+
+          <div class="confirmation-actions" style="margin-top: 16px;">
+            <button type="button" id="look-cancel-btn" class="btn btn-danger">
+              Cancel This Appointment
+            </button>
           </div>
         </div>
       </section>

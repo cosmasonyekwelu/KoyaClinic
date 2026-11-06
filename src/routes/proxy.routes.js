@@ -101,4 +101,21 @@ router.get('/bookings/:id', async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/bookings/:id
+ * Forward to DELETE /bookings/:id
+ */
+router.delete('/bookings/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await forwardRequest(req, `/bookings/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    return res.status(result.status).json(result.data);
+  } catch (err) {
+    console.error('Proxy DELETE /bookings/:id error:', err);
+    return res.status(502).json({ error: 'Failed to cancel booking' });
+  }
+});
+
 module.exports = router;
