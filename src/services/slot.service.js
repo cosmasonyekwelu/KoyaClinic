@@ -42,6 +42,15 @@ async function getSlots(filters = {}) {
     where.provider = filters.provider;
   }
 
+  // Filter out past appointment slots unless explicitly requested to include them
+  // e.g., filters.include_past === 'true' or true
+  const includePast = filters.include_past === true || filters.include_past === 'true';
+  if (!includePast) {
+    where.start = {
+      gt: new Date(),
+    };
+  }
+
   const slots = await prisma.slot.findMany({
     where,
     orderBy: {

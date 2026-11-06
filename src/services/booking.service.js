@@ -293,14 +293,30 @@ async function getBookingById(id) {
  */
 async function cancelBooking(id) {
   return await prisma.$transaction(async (tx) => {
-    // Check if the booking exists at all
+    // Check if the booking exists at all, including slot details for start time check
     const booking = await tx.booking.findUnique({
       where: { id },
+      include: {
+        slot: true,
+      },
     });
 
     if (!booking) {
       const error = new Error('booking not found');
       error.statusCode = 404;
+      throw error;
+    }
+
+    if (booking.status === 'cancelled') {
+      const error = new Error('booking already cancelled');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    // Prevent cancellation of appointments that have already passed
+    if (booking.slot && new Date(booking.slot.start).getTime() <= Date.now()) {
+      const error = new Error('cannot cancel past appointment');
+      error.statusCode = 400;
       throw error;
     }
 

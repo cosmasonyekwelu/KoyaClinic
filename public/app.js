@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const confDate = document.getElementById('conf-date');
   const confTime = document.getElementById('conf-time');
   const confStatus = document.getElementById('conf-status');
+  const confCancelBtn = document.getElementById('conf-cancel-btn');
+  const confCancelAlert = document.getElementById('conf-cancel-alert');
   const bookAnotherBtn = document.getElementById('book-another-btn');
   const lookupThisBookingBtn = document.getElementById('lookup-this-booking-btn');
 
@@ -59,6 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const lookDate = document.getElementById('look-date');
   const lookTime = document.getElementById('look-time');
   const lookStatus = document.getElementById('look-status');
+  const lookCancelBtn = document.getElementById('look-cancel-btn');
+  const lookCancelAlert = document.getElementById('look-cancel-alert');
 
   // State
   let allSlots = [];
@@ -466,6 +470,15 @@ document.addEventListener('DOMContentLoaded', () => {
     confStatus.textContent = booking.status;
     confStatus.className = `status-badge status-${booking.status}`;
 
+    confCancelAlert.style.display = 'none';
+    if (booking.status === 'confirmed') {
+      confCancelBtn.style.display = 'inline-flex';
+      confCancelBtn.disabled = false;
+      confCancelBtn.textContent = 'Cancel This Appointment';
+    } else {
+      confCancelBtn.style.display = 'none';
+    }
+
     // Provider and appointment time from slotDetails if available
     if (slotDetails) {
       const times = formatDateTime(slotDetails.start);
@@ -483,6 +496,8 @@ document.addEventListener('DOMContentLoaded', () => {
     confirmationSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  let currentLookupBooking = null;
+
   /**
    * Booking Lookup handler
    */
@@ -496,6 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
     lookupBtnSpinner.style.display = 'inline-block';
     lookupErrorAlert.style.display = 'none';
     lookupResultPanel.style.display = 'none';
+    lookCancelAlert.style.display = 'none';
 
     try {
       const res = await fetch(`/api/bookings/${encodeURIComponent(id)}`);
@@ -504,6 +520,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok) {
         throw new Error(data.error || 'Booking not found');
       }
+
+      currentLookupBooking = data;
 
       // Populate lookup result panel
       lookBookingId.textContent = data.id;
@@ -514,12 +532,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Slot info lookup if matching slot in memory
       const matchingSlot = allSlots.find(s => s.id === data.slot_id);
+      let isPast = false;
       if (matchingSlot) {
         const times = formatDateTime(matchingSlot.start);
         const endTimes = formatDateTime(matchingSlot.end);
         lookProvider.textContent = matchingSlot.provider;
         lookDate.textContent = times.date;
         lookTime.textContent = `${times.time} – ${endTimes.time} (WAT)`;
+        isPast = new Date(matchingSlot.start).getTime() <= Date.now();
       } else {
         lookProvider.textContent = data.provider || `Slot ${data.slot_id}`;
         const createdTimes = formatDateTime(data.created_at);
@@ -527,7 +547,15 @@ document.addEventListener('DOMContentLoaded', () => {
         lookTime.textContent = `${createdTimes.time} (WAT)`;
       }
 
-      lookupResultPanel.style.display = 'grid';
+      if (data.status === 'confirmed' && !isPast) {
+        lookCancelBtn.style.display = 'inline-flex';
+        lookCancelBtn.disabled = false;
+        lookCancelBtn.textContent = 'Cancel This Appointment';
+      } else {
+        lookCancelBtn.style.display = 'none';
+      }
+
+      lookupResultPanel.style.display = 'block';
     } catch (err) {
       lookupErrorAlert.textContent = err.message || 'Booking not found. Please check the ID and try again.';
       lookupErrorAlert.style.display = 'block';
@@ -535,6 +563,58 @@ document.addEventListener('DOMContentLoaded', () => {
       lookupSubmitBtn.disabled = false;
       lookupBtnText.textContent = 'Look Up Booking';
       lookupBtnSpinner.style.display = 'none';
+    }
+  });
+
+  /**
+   * Cancel booking helper
+   */
+  async function handleCancellation(bookingId, alertElement, btnElement, statusBadgeElement) {
+    if (!bookingId) return;
+    if (!confirm('Are you sure you want to cancel this appointment?')) return;
+
+    btnElement.disabled = true;
+    btnElement.textContent = 'Cancelling...';
+    alertElement.style.display = 'none';
+
+    try {
+      const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to cancel appointment');
+      }
+
+      alertElement.textContent = 'Appointment cancelled successfully. The slot has been released.';
+      alertElement.className = 'alert alert-success';
+      alertElement.style.cssText = 'background-color: var(--success-bg); color: #166534; border: 1px solid #bbf7d0; display: block; margin-bottom: 12px;';
+
+      statusBadgeElement.textContent = 'cancelled';
+      statusBadgeElement.className = 'status-badge status-cancelled';
+      btnElement.style.display = 'none';
+
+      // Refresh available slots immediately so released slot shows
+      await fetchSlots(true);
+    } catch (err) {
+      alertElement.textContent = err.message || 'Error cancelling appointment';
+      alertElement.className = 'alert alert-error';
+      alertElement.style.display = 'block';
+      btnElement.disabled = false;
+      btnElement.textContent = 'Cancel This Appointment';
+    }
+  }
+
+  confCancelBtn.addEventListener('click', () => {
+    if (lastConfirmedBooking && lastConfirmedBooking.id) {
+      handleCancellation(lastConfirmedBooking.id, confCancelAlert, confCancelBtn, confStatus);
+    }
+  });
+
+  lookCancelBtn.addEventListener('click', () => {
+    if (currentLookupBooking && currentLookupBooking.id) {
+      handleCancellation(currentLookupBooking.id, lookCancelAlert, lookCancelBtn, lookStatus);
     }
   });
 

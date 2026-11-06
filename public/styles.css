@@ -229,6 +229,17 @@ select:focus {
   color: var(--text-main);
 }
 
+.btn-danger {
+  background-color: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #b91c1c;
+  border-color: #b91c1c;
+}
+
 /* Spinner */
 .spinner {
   width: 28px;

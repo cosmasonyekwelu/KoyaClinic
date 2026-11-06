@@ -20,8 +20,8 @@ async function reset(req, res, next) {
  */
 async function getSlots(req, res, next) {
   try {
-    const { provider } = req.query;
-    const slots = await slotService.getSlots({ provider });
+    const { provider, include_past } = req.query;
+    const slots = await slotService.getSlots({ provider, include_past });
     res.status(200).json({ slots });
   } catch (error) {
     next(error);
